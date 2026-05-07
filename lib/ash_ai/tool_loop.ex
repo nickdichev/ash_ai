@@ -428,10 +428,10 @@ defmodule AshAi.ToolLoop do
 
   defp build_assistant_content(text, thinking) do
     parts = []
-    parts = if text && text != "", do: parts ++ [ContentPart.text(text)], else: parts
+    parts = if text != "", do: parts ++ [ContentPart.text(text)], else: parts
 
     parts =
-      if thinking && thinking != "", do: parts ++ [ContentPart.thinking(thinking)], else: parts
+      if thinking != "", do: parts ++ [ContentPart.thinking(thinking)], else: parts
 
     parts
   end
@@ -642,7 +642,7 @@ defmodule AshAi.ToolLoop do
     parts = [ContentPart.text(combined_text)]
 
     parts =
-      if thinking && thinking != "" do
+      if thinking != "" do
         parts ++ [ContentPart.thinking(thinking)]
       else
         parts ++ other_parts
