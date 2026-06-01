@@ -40,8 +40,6 @@ defmodule AshAiVectorizeTest do
   end
 
   test "ash_oban strategy works as expected" do
-    Oban.start_link(AshOban.config([AshAi.Test.Music], Application.get_env(:ash_ai, :oban)))
-
     artist =
       Music.create_artist_oban!(%{
         name: "John Doe",

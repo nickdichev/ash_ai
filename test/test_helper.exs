@@ -5,4 +5,7 @@
 ExUnit.start(exclude: [:live_llm])
 
 AshAi.TestRepo.start_link()
+
+Oban.start_link(AshOban.config([AshAi.Test.Music], Application.get_env(:ash_ai, :oban)))
+
 Ecto.Adapters.SQL.Sandbox.mode(AshAi.TestRepo, :manual)

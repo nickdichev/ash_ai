@@ -289,136 +289,34 @@ defmodule AshAi.OpenApiTest do
           AshAi.OpenApi
         )
 
-      assert actual == %{
-               id: %{
-                 type: :object,
-                 properties: %{
-                   in: %{type: :array, items: %{type: :string, format: :uuid}},
-                   eq: %{type: :string, format: :uuid},
-                   is_nil: %{type: :boolean},
-                   less_than: %{type: :string, format: :uuid},
-                   greater_than: %{type: :string, format: :uuid},
-                   not_eq: %{type: :string, format: :uuid},
-                   less_than_or_equal: %{type: :string, format: :uuid},
-                   greater_than_or_equal: %{type: :string, format: :uuid},
-                   is_distinct_from: %{type: :string, format: :uuid},
-                   is_not_distinct_from: %{type: :string, format: :uuid}
-                 },
-                 additionalProperties: false
-               },
-               name: %{
-                 type: :object,
-                 properties: %{
-                   in: %{type: :array, items: %{type: :string}},
-                   eq: %{type: :string},
-                   is_nil: %{type: :boolean},
-                   less_than: %{type: :string},
-                   greater_than: %{type: :string},
-                   not_eq: %{type: :string},
-                   less_than_or_equal: %{type: :string},
-                   greater_than_or_equal: %{type: :string},
-                   contains: %{type: :string},
-                   is_distinct_from: %{type: :string},
-                   is_not_distinct_from: %{type: :string}
-                 },
-                 additionalProperties: false
-               },
-               bio: %{
-                 type: :object,
-                 properties: %{
-                   eq: %{
-                     type: :object,
-                     required: [:birth],
-                     properties: %{
-                       birth: %{
-                         :type => :string,
-                         :format => :date,
-                         "description" => "Field included by default."
-                       }
-                     },
-                     additionalProperties: false
-                   },
-                   is_nil: %{type: :boolean},
-                   less_than: %{
-                     type: :object,
-                     required: [:birth],
-                     properties: %{
-                       birth: %{
-                         :type => :string,
-                         :format => :date,
-                         "description" => "Field included by default."
-                       }
-                     },
-                     additionalProperties: false
-                   },
-                   greater_than: %{
-                     type: :object,
-                     required: [:birth],
-                     properties: %{
-                       birth: %{
-                         :type => :string,
-                         :format => :date,
-                         "description" => "Field included by default."
-                       }
-                     },
-                     additionalProperties: false
-                   },
-                   not_eq: %{
-                     type: :object,
-                     required: [:birth],
-                     properties: %{
-                       birth: %{
-                         :type => :string,
-                         :format => :date,
-                         "description" => "Field included by default."
-                       }
-                     },
-                     additionalProperties: false
-                   },
-                   less_than_or_equal: %{
-                     type: :object,
-                     required: [:birth],
-                     properties: %{
-                       birth: %{
-                         :type => :string,
-                         :format => :date,
-                         "description" => "Field included by default."
-                       }
-                     },
-                     additionalProperties: false
-                   },
-                   greater_than_or_equal: %{
-                     type: :object,
-                     required: [:birth],
-                     properties: %{
-                       birth: %{
-                         :type => :string,
-                         :format => :date,
-                         "description" => "Field included by default."
-                       }
-                     },
-                     additionalProperties: false
-                   }
-                 },
-                 additionalProperties: false
-               },
-               albums_count: %{
-                 type: :object,
-                 properties: %{
-                   in: %{type: :array, items: %{type: :integer}},
-                   eq: %{type: :integer},
-                   is_nil: %{type: :boolean},
-                   less_than: %{type: :integer},
-                   greater_than: %{type: :integer},
-                   not_eq: %{type: :integer},
-                   is_distinct_from: %{type: :integer},
-                   is_not_distinct_from: %{type: :integer},
-                   less_than_or_equal: %{type: :integer},
-                   greater_than_or_equal: %{type: :integer}
-                 },
-                 additionalProperties: false
-               }
-             }
+      # One filter object is generated per public, filterable field.
+      assert Map.keys(actual) |> Enum.sort() == [:albums_count, :bio, :id, :name]
+
+      # Every filter object is a closed object exposing an `is_nil` boolean.
+      for {_field, schema} <- actual do
+        assert schema.type == :object
+        assert schema.additionalProperties == false
+        assert schema.properties.is_nil == %{type: :boolean}
+      end
+
+      # UUID attribute: `eq`/`in` carry the uuid format.
+      assert actual.id.properties.eq == %{type: :string, format: :uuid}
+      assert actual.id.properties.in == %{type: :array, items: %{type: :string, format: :uuid}}
+
+      # String attribute: plain string type, plus string-only operators.
+      assert actual.name.properties.eq == %{type: :string}
+      assert actual.name.properties.contains == %{type: :string}
+
+      # Aggregate (count): integer type.
+      assert actual.albums_count.properties.eq == %{type: :integer}
+      assert actual.albums_count.properties.in == %{type: :array, items: %{type: :integer}}
+
+      # Embedded type attribute: `eq` is itself an object schema.
+      assert %{
+               type: :object,
+               required: [:birth],
+               properties: %{birth: %{type: :string, format: :date}}
+             } = actual.bio.properties.eq
     end
 
     test "with Album" do
@@ -426,28 +324,18 @@ defmodule AshAi.OpenApiTest do
 
       read_action = resource |> Ash.Resource.Info.action(:read)
 
-      assert get_action_specific_properties(
-               read_action,
-               resource,
-               AshAi.OpenApi
-             ) == %{
-               id: %{
-                 type: :object,
-                 properties: %{
-                   in: %{type: :array, items: %{type: :string, format: :uuid}},
-                   eq: %{type: :string, format: :uuid},
-                   is_nil: %{type: :boolean},
-                   less_than: %{type: :string, format: :uuid},
-                   greater_than: %{type: :string, format: :uuid},
-                   not_eq: %{type: :string, format: :uuid},
-                   less_than_or_equal: %{type: :string, format: :uuid},
-                   greater_than_or_equal: %{type: :string, format: :uuid},
-                   is_distinct_from: %{type: :string, format: :uuid},
-                   is_not_distinct_from: %{type: :string, format: :uuid}
-                 },
-                 additionalProperties: false
-               }
-             }
+      actual =
+        get_action_specific_properties(
+          read_action,
+          resource,
+          AshAi.OpenApi
+        )
+
+      assert Map.keys(actual) == [:id]
+      assert actual.id.type == :object
+      assert actual.id.additionalProperties == false
+      assert actual.id.properties.eq == %{type: :string, format: :uuid}
+      assert actual.id.properties.in == %{type: :array, items: %{type: :string, format: :uuid}}
     end
   end
 

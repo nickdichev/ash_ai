@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2024 ash_ai contributors <https://github.com/ash-project/ash_ai/graphs/contributors>
+#
+# SPDX-License-Identifier: MIT
+
 defprotocol AshAi.ToToolError do
   @moduledoc """
   Converts Ash errors into concise readable tool error messages.

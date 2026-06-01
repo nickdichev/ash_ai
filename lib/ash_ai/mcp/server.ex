@@ -515,6 +515,8 @@ defmodule AshAi.Mcp.Server do
     end
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
+  # `html_path` is a developer-configured DSL value, not user-supplied input.
   defp read_mcp_resource(%AshAi.McpUiResource{html_path: path}, _params, _opts) do
     case File.read(path) do
       {:ok, _contents} = ok -> ok
