@@ -11,6 +11,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.1](https://github.com/ash-project/ash_ai/compare/v0.7.0...v0.7.1) (2026-06-01)
+
+
+
+
+### Bug Fixes:
+
+* handle composite types in renderer by [@zachdaniel](https://github.com/zachdaniel)
+
+### Improvements:
+
+* log un-displayable errors by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.7.0](https://github.com/ash-project/ash_ai/compare/v0.6.1...v0.7.0) (2026-06-01)
 
 
