@@ -35,7 +35,7 @@ defmodule AshAi.Tool.Builder do
     description =
       String.trim(
         tool_def.description || tool_def.action.description ||
-          "Call the #{tool_def.action.name} action on the #{inspect(tool_def.resource)} resource"
+          "Call the #{tool_def.action.name} tool"
       )
 
     parameter_schema = Schema.for_tool(tool_def, strict?: strict?)
