@@ -11,6 +11,33 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.0](https://github.com/ash-project/ash_ai/compare/v0.6.1...v0.7.0) (2026-06-01)
+
+
+
+
+### Features:
+
+* defining tools at the resource level (#187) by 天海 原 / AMAMI Hara [(#187)](https://github.com/ash-project/ash_ai/pull/187)
+
+### Bug Fixes:
+
+* preserve reasoning_content (thinking) in assistant messages (#194) by Senthil [(#194)](https://github.com/ash-project/ash_ai/pull/194)
+
+* return MCP-compatible responses for tool execution failures (#193) by [@sukidhar](https://github.com/sukidhar) [(#193)](https://github.com/ash-project/ash_ai/pull/193)
+
+* invalid_request_error for tool calling with Anthropic models (#192) by Vangelis Tsoumenis [(#192)](https://github.com/ash-project/ash_ai/pull/192)
+
+* Makes sure OpenApi schema required list is sorted (#190) by sezaru [(#190)](https://github.com/ash-project/ash_ai/pull/190)
+
+* open_api_test (#188) by 天海 原 / AMAMI Hara [(#188)](https://github.com/ash-project/ash_ai/pull/188)
+
+### Improvements:
+
+* support server-level instructions in MCP initialization response by [@zachdaniel](https://github.com/zachdaniel)
+
+* surface summed token usage on ToolLoop.Result.usage (#196) by Senthil [(#196)](https://github.com/ash-project/ash_ai/pull/196)
+
 ## [v0.6.1](https://github.com/ash-project/ash_ai/compare/v0.6.0...v0.6.1) (2026-04-13)
 
 
