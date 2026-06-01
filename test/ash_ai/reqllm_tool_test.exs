@@ -4,7 +4,17 @@
 
 defmodule AshAi.ReqLLMToolTest do
   use ExUnit.Case, async: true
-  alias __MODULE__.{TestDomain, TestResource}
+  alias __MODULE__.{TestDomain, TestResource, Upload}
+
+  defmodule Upload do
+    use Ash.TypedStruct
+
+    typed_struct do
+      field :upload_url, :string
+      field :method, :string
+      field :expires_on, :date
+    end
+  end
 
   defmodule TestResource do
     use Ash.Resource, domain: TestDomain, data_layer: Ash.DataLayer.Ets
@@ -26,6 +36,17 @@ defmodule AshAi.ReqLLMToolTest do
           {:ok, "Processed: #{input.arguments.message}"}
         end)
       end
+
+      action :request_upload, Upload do
+        run(fn _input, _context ->
+          {:ok,
+           Upload.new!(%{
+             upload_url: "https://example.com/upload",
+             method: "PUT",
+             expires_on: ~D[2026-06-01]
+           })}
+        end)
+      end
     end
   end
 
@@ -42,6 +63,7 @@ defmodule AshAi.ReqLLMToolTest do
       tool :update_test_resource, TestResource, :update
       tool :destroy_test_resource, TestResource, :destroy
       tool :custom_test_action, TestResource, :custom_action
+      tool :request_upload, TestResource, :request_upload
     end
   end
 
@@ -139,6 +161,20 @@ defmodule AshAi.ReqLLMToolTest do
         registry["custom_test_action"].(%{"input" => %{"message" => "Hello"}}, context())
 
       assert result == "\"Processed: Hello\""
+    end
+
+    test "serializes an Ash.TypedStruct return value to JSON" do
+      {_tools, registry} = AshAi.build_tools_and_registry(actions: [{TestResource, :*}])
+
+      {:ok, result, _raw} = registry["request_upload"].(%{}, context())
+
+      assert {:ok, decoded} = Jason.decode(result)
+
+      assert decoded == %{
+               "upload_url" => "https://example.com/upload",
+               "method" => "PUT",
+               "expires_on" => "2026-06-01"
+             }
     end
 
     test "handles nil arguments" do

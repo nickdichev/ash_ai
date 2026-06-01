@@ -38,7 +38,11 @@ defmodule AshAi.Tool.Errors do
       if AshAi.ToToolError.impl_for(error) do
         AshAi.ToToolError.to_tool_error(error)
       else
-        Logger.warning("AshAi.ToToolError not implemented for #{inspect(error.__struct__)}")
+        Logger.warning("""
+        AshAi.ToToolError not implemented for #{inspect(error.__struct__)}, returning a generic error message.
+
+        #{Exception.format(:error, error)}\
+        """)
 
         "unexpected error occurred"
       end

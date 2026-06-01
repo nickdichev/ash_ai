@@ -21,21 +21,93 @@ defmodule AshAi.Serializer do
     {type, constraints} = flatten_new_type(type, constraints || [])
     opts = [skip_only_primary_key?: false, top_level?: false] |> Keyword.merge(opts)
 
-    with Ash.Type.Struct <- type,
-         instance_of when not is_nil(instance_of) <- constraints[:instance_of],
-         true <- Ash.Resource.Info.resource?(instance_of) do
-      req = %{fields: %{}, route: %{}, domain: domain}
-      serialize_attributes(req, value, opts)
+    serialize_typed_value(value, type, constraints, domain, opts)
+  end
+
+  # Structs backed by an Ash resource are serialized like resource records,
+  # honoring field selection and any loaded relationships/calculations.
+  defp serialize_typed_value(value, Ash.Type.Struct, constraints, domain, opts) do
+    instance_of = constraints[:instance_of]
+
+    if instance_of && Ash.Resource.Info.resource?(instance_of) do
+      serialize_resource(value, domain, opts)
     else
-      _ ->
-        if Ash.Resource.Info.resource?(type) do
-          req = %{fields: %{}, route: %{}, domain: domain}
-          serialize_attributes(req, value, opts)
-        else
-          value
-        end
+      serialize_fields(value, constraints, domain, opts)
     end
   end
+
+  # `map`, `keyword`, and `tuple` types (as well as `struct` types without an
+  # `instance_of` resource, e.g. `Ash.TypedStruct`) may carry `fields`
+  # constraints. When they do, serialize each declared field through its own
+  # type so that nested values (resources, structs, tuples, ...) are turned into
+  # JSON-encodable terms rather than handed to `Jason` as raw structs/tuples.
+  defp serialize_typed_value(value, type, constraints, domain, opts)
+       when type in [Ash.Type.Map, Ash.Type.Keyword, Ash.Type.Tuple] do
+    serialize_fields(value, constraints, domain, opts)
+  end
+
+  defp serialize_typed_value(value, type, _constraints, domain, opts) do
+    if Ash.Resource.Info.resource?(type) do
+      serialize_resource(value, domain, opts)
+    else
+      value
+    end
+  end
+
+  defp serialize_resource(value, domain, opts) do
+    serialize_attributes(%{fields: %{}, route: %{}, domain: domain}, value, opts)
+  end
+
+  # Tuples are positional, so zip the values with the ordered field definitions.
+  defp serialize_fields(value, constraints, domain, opts) when is_tuple(value) do
+    fields = constraints[:fields] || []
+
+    if tuple_size(value) == length(fields) do
+      value
+      |> Tuple.to_list()
+      |> Enum.zip(fields)
+      |> Map.new(fn {field_value, {name, config}} ->
+        {name, serialize_field(field_value, config, domain, opts)}
+      end)
+    else
+      value
+    end
+  end
+
+  defp serialize_fields(value, constraints, domain, opts) do
+    case constraints[:fields] do
+      fields when is_list(fields) and fields != [] ->
+        Enum.reduce(fields, %{}, fn {name, config}, acc ->
+          case fetch_field(value, name) do
+            {:ok, field_value} ->
+              Map.put(acc, name, serialize_field(field_value, config, domain, opts))
+
+            :error ->
+              acc
+          end
+        end)
+
+      _ ->
+        value
+    end
+  end
+
+  defp serialize_field(value, config, domain, opts) do
+    serialize_value(value, config[:type], config[:constraints] || [], domain, opts)
+  end
+
+  defp fetch_field(value, name) when is_struct(value), do: Map.fetch(value, name)
+
+  defp fetch_field(value, name) when is_map(value) do
+    case Map.fetch(value, name) do
+      {:ok, _} = result -> result
+      :error -> Map.fetch(value, to_string(name))
+    end
+  end
+
+  defp fetch_field(value, name) when is_list(value), do: Keyword.fetch(value, name)
+
+  defp fetch_field(_value, _name), do: :error
 
   defp flatten_new_type(type, constraints) do
     if Ash.Type.NewType.new_type?(type) do

@@ -331,7 +331,12 @@ defmodule AshAi.Tool.Execution do
     |> then(fn result ->
       if action.returns do
         result
-        |> AshAi.Serializer.serialize_value(action.returns, [], ctx.domain, load: ctx.load)
+        |> AshAi.Serializer.serialize_value(
+          action.returns,
+          action.constraints,
+          ctx.domain,
+          load: ctx.load
+        )
         |> Jason.encode!()
       else
         "success"
