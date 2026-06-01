@@ -176,6 +176,40 @@ defmodule AshAi.Mcp.ToolsTest do
       assert init_response.status == 200
       assert init_body["result"]["capabilities"]["tools"]
     end
+
+    test "omits `instructions` when not configured" do
+      init_response =
+        conn(:post, "/", %{"method" => "initialize", "id" => "init_1", "params" => %{}})
+        |> Router.call(@opts)
+
+      init_body = decode_response(init_response)
+      refute Map.has_key?(init_body["result"], "instructions")
+    end
+
+    test "includes `instructions` string from opts" do
+      opts = Router.init(Keyword.put(@opts, :instructions, "Server-level guidance."))
+
+      init_response =
+        conn(:post, "/", %{"method" => "initialize", "id" => "init_1", "params" => %{}})
+        |> Router.call(opts)
+
+      init_body = decode_response(init_response)
+      assert init_body["result"]["instructions"] == "Server-level guidance."
+    end
+
+    test "supports a 1-arity function for dynamic `instructions`" do
+      opts =
+        Router.init(
+          Keyword.put(@opts, :instructions, fn opts -> "tools=#{length(opts[:tools])}" end)
+        )
+
+      init_response =
+        conn(:post, "/", %{"method" => "initialize", "id" => "init_1", "params" => %{}})
+        |> Router.call(opts)
+
+      init_body = decode_response(init_response)
+      assert init_body["result"]["instructions"] == "tools=1"
+    end
   end
 
   describe "integration" do

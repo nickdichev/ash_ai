@@ -146,6 +146,25 @@ defmodule AshAi.Mcp.Server do
     end
   end
 
+  @doc """
+  Get the MCP server instructions, if any. Returns the configured `instructions`
+  option (a string) or the result of calling it as a 1-arity function with the
+  request opts, or `nil` when unset. Forwarded on the `initialize` response so
+  hosts can prime the model with server-level guidance (analogous to a scoped
+  system prompt) alongside per-tool descriptions.
+  """
+  def get_instructions(opts) do
+    case opts[:instructions] do
+      nil -> nil
+      str when is_binary(str) -> str
+      fun when is_function(fun, 1) -> fun.(opts)
+    end
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, _key, ""), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
   defp keep_alive(conn) do
     receive do
     after
@@ -204,11 +223,8 @@ defmodule AshAi.Mcp.Server do
           |> mcp_resources()
           |> capabilities()
 
-        # Return capabilities
-        response = %{
-          "jsonrpc" => "2.0",
-          "id" => id,
-          "result" => %{
+        result =
+          %{
             "serverInfo" => %{
               "name" => get_server_name(opts),
               "version" => get_server_version(opts)
@@ -216,7 +232,9 @@ defmodule AshAi.Mcp.Server do
             "protocolVersion" => protocol_version_statement,
             "capabilities" => capabilities
           }
-        }
+          |> maybe_put("instructions", get_instructions(opts))
+
+        response = %{"jsonrpc" => "2.0", "id" => id, "result" => result}
 
         {:initialize_response, Jason.encode!(response), new_session_id}
 
