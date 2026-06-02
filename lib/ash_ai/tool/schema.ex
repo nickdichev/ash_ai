@@ -20,12 +20,17 @@ defmodule AshAi.Tool.Schema do
           resource: resource,
           action: action,
           action_parameters: action_parameters,
-          arguments: tool_arguments
+          arguments: tool_arguments,
+          identity: identity
         },
         opts \\ []
       ) do
     strict? = Keyword.get(opts, :strict?, true)
-    for_action(domain, resource, action, action_parameters, tool_arguments, strict?: strict?)
+
+    for_action(domain, resource, action, action_parameters, tool_arguments,
+      strict?: strict?,
+      identity: identity
+    )
   end
 
   @doc """
@@ -40,6 +45,7 @@ defmodule AshAi.Tool.Schema do
         opts \\ []
       ) do
     strict? = Keyword.get(opts, :strict?, true)
+    identity = Keyword.get(opts, :identity, nil)
 
     attributes =
       if action.type in [:action, :read] do
@@ -112,7 +118,8 @@ defmodule AshAi.Tool.Schema do
       type: :object,
       properties:
         add_action_specific_properties(props_with_input, resource, action, action_parameters,
-          strict?: strict?
+          strict?: strict?,
+          identity: identity
         ),
       required: Map.keys(props_with_input),
       additionalProperties: false
@@ -418,11 +425,17 @@ defmodule AshAi.Tool.Schema do
          resource,
          %{type: type},
          _action_parameters,
-         _opts
+         opts
        )
        when type in [:update, :destroy] do
-    pkey =
-      Map.new(Ash.Resource.Info.primary_key(resource), fn key ->
+    identity = Keyword.get(opts, :identity, nil)
+
+    # Mirror `AshAi.Tool.Execution.identity_filter/3`: address records by the
+    # configured identity (or the primary key by default, or nothing when `false`).
+    identity_properties =
+      resource
+      |> AshAi.Tool.identity_keys(identity)
+      |> Map.new(fn key ->
         value =
           Ash.Resource.Info.attribute(resource, key)
           |> AshAi.OpenApi.resource_write_attribute_type(resource, type)
@@ -430,7 +443,7 @@ defmodule AshAi.Tool.Schema do
         {key, value}
       end)
 
-    Map.merge(properties, pkey)
+    Map.merge(properties, identity_properties)
   end
 
   defp add_action_specific_properties(properties, _resource, _action, _action_parameters, _opts),
