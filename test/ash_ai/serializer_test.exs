@@ -13,7 +13,7 @@ defmodule AshAi.SerializerTest do
     end
 
     actions do
-      defaults [:create]
+      defaults [:create, :read]
       default_accept [:label]
     end
   end
