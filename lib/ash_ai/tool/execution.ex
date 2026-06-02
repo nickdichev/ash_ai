@@ -349,7 +349,7 @@ defmodule AshAi.Tool.Execution do
 
   defp identity_filter(nil, resource, arguments) do
     resource
-    |> Ash.Resource.Info.primary_key()
+    |> AshAi.Tool.identity_keys(nil)
     |> Enum.reduce(nil, fn key, expr ->
       value = Map.get(arguments, to_string(key))
 
@@ -363,9 +363,7 @@ defmodule AshAi.Tool.Execution do
 
   defp identity_filter(identity, resource, arguments) do
     resource
-    |> Ash.Resource.Info.identities()
-    |> Enum.find(&(&1.name == identity))
-    |> Map.get(:keys)
+    |> AshAi.Tool.identity_keys(identity)
     |> Enum.map(fn key ->
       {key, Map.get(arguments, to_string(key))}
     end)

@@ -5,7 +5,7 @@
 defmodule AshAi.ToolTest do
   use ExUnit.Case, async: true
 
-  alias __MODULE__.{TestDomain, TestResource}
+  alias __MODULE__.{IdentityDomain, IdentityResource, TestDomain, TestResource}
 
   defmodule TestResource do
     use Ash.Resource, domain: TestDomain, data_layer: Ash.DataLayer.Ets
@@ -45,6 +45,116 @@ defmodule AshAi.ToolTest do
              "openai/toolInvocation/invoking" => "Loading test resources…",
              "openai/toolInvocation/invoked" => "Test resources loaded."
            }
+    end
+  end
+
+  defmodule IdentityResource do
+    use Ash.Resource, domain: IdentityDomain, data_layer: Ash.DataLayer.Ets
+
+    attributes do
+      integer_primary_key :id, writable?: true
+      attribute :public_id, :string, public?: true, allow_nil?: false
+      attribute :name, :string, public?: true
+    end
+
+    identities do
+      identity :public_id, [:public_id], pre_check_with: IdentityDomain
+    end
+
+    actions do
+      defaults [:read, :create, :destroy]
+      default_accept [:id, :public_id, :name]
+
+      update :update do
+        primary? true
+        accept [:name]
+      end
+    end
+  end
+
+  defmodule IdentityDomain do
+    use Ash.Domain, extensions: [AshAi]
+
+    resources do
+      resource IdentityResource
+    end
+
+    tools do
+      # Default: addresses records by the primary key
+      tool :update_by_pk, IdentityResource, :update
+
+      # Custom identity: addresses records by the `public_id` unique identity
+      tool :update_by_public_id, IdentityResource, :update, identity: :public_id
+
+      # Disabled: no identifier in the schema at all
+      tool :update_no_identity, IdentityResource, :update, identity: false
+    end
+  end
+
+  describe "identity in update/destroy schemas" do
+    defp identity_tool(name) do
+      AshAi.list_tools(actions: [{IdentityResource, [:update]}], strict: false)
+      |> Enum.find(&(&1.name == to_string(name)))
+    end
+
+    test "default (no identity:) includes the primary key" do
+      props = identity_tool(:update_by_pk).parameter_schema["properties"]
+
+      assert Map.has_key?(props, "id")
+      refute Map.has_key?(props, "public_id")
+    end
+
+    test "identity: <non-pk identity> includes the identity key, not the primary key" do
+      props = identity_tool(:update_by_public_id).parameter_schema["properties"]
+
+      assert Map.has_key?(props, "public_id")
+      refute Map.has_key?(props, "id")
+    end
+
+    test "identity: false includes neither the primary key nor an identity" do
+      props = identity_tool(:update_no_identity).parameter_schema["properties"]
+
+      refute Map.has_key?(props, "id")
+      refute Map.has_key?(props, "public_id")
+    end
+  end
+
+  describe "identity in update execution" do
+    setup do
+      records =
+        for i <- 1..2 do
+          IdentityResource
+          |> Ash.Changeset.for_create(:create, %{
+            id: i,
+            public_id: "pub-#{i}",
+            name: "Name #{i}"
+          })
+          |> Ash.create!(domain: IdentityDomain)
+        end
+
+      %{records: records}
+    end
+
+    test "update tool with identity: :public_id resolves and updates by public_id only" do
+      {_tools, registry} =
+        AshAi.build_tools_and_registry(
+          actions: [{IdentityResource, [:update]}],
+          strict: false
+        )
+
+      {:ok, _json, updated} =
+        registry["update_by_public_id"].(
+          %{"public_id" => "pub-2", "input" => %{"name" => "Renamed"}},
+          context()
+        )
+
+      assert updated.id == 2
+      assert updated.public_id == "pub-2"
+      assert updated.name == "Renamed"
+
+      # The other record is untouched
+      other = Ash.get!(IdentityResource, 1, domain: IdentityDomain)
+      assert other.name == "Name 1"
     end
   end
 

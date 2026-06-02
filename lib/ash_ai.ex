@@ -61,6 +61,33 @@ defmodule AshAi do
         do: true
 
     def has_meta?(_), do: false
+
+    @doc """
+    Resolves the attribute keys used to address a record for update/destroy tools.
+
+    Mirrors the `identity:` tool option so schema generation and execution stay in sync:
+
+      * `false` - no identifier keys (the caller adds no filter / no schema property)
+      * `nil` - the resource's primary key (the default)
+      * a name - the keys of the named identity
+    """
+    def identity_keys(_resource, false), do: []
+
+    def identity_keys(resource, nil), do: Ash.Resource.Info.primary_key(resource)
+
+    def identity_keys(resource, name) do
+      resource
+      |> Ash.Resource.Info.identities()
+      |> Enum.find(&(&1.name == name))
+      |> case do
+        nil ->
+          raise ArgumentError,
+                "No identity named #{inspect(name)} found on #{inspect(resource)}"
+
+        identity ->
+          identity.keys
+      end
+    end
   end
 
   defmodule McpResource do
