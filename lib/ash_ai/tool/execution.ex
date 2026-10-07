@@ -10,6 +10,7 @@ defmodule AshAi.Tool.Execution do
   require Ash.Expr
 
   alias AshAi.Tool.Errors
+  alias AshAi.ToolError
 
   defmodule Context do
     @moduledoc """
@@ -34,7 +35,13 @@ defmodule AshAi.Tool.Execution do
   - `{:ok, result, raw_result}` for successful tool calls
   - `{:error, error_text}` for execution failures
 
-  Set `:encode?` to `false` to return the serialized result before JSON encoding.
+  ## Options
+
+    * `:encode?` - set to `false` to return the serialized result before JSON
+      encoding. Defaults to `true`.
+    * `:errors` - `:text` (the default) returns failures as `{:error, error_text}`.
+      `:structured` returns them as `{:error, [%AshAi.ToolError{}]}`; `error_text`
+      is always `AshAi.ToolError.to_text/1` of that list.
   """
   def run(
         %AshAi.Tool{
@@ -56,54 +63,77 @@ defmodule AshAi.Tool.Execution do
     client_input = arguments["input"] || %{}
 
     opts = build_opts(domain, context)
+    errors_format = errors_format!(run_opts)
 
-    with :ok <- validate_input_shape(client_input) do
-      resolved_load =
-        case load do
-          func when is_function(func, 1) -> func.(client_input)
-          list when is_list(list) -> list
-          _ -> []
+    case validate_input_shape(client_input) do
+      {:error, %ToolError{} = error} ->
+        error_result([error], errors_format)
+
+      :ok ->
+        resolved_load =
+          case load do
+            func when is_function(func, 1) -> func.(client_input)
+            list when is_list(list) -> list
+            _ -> []
+          end
+
+        exec_ctx = %Context{
+          actor: context[:actor],
+          tenant: context[:tenant],
+          context: context[:context] || %{},
+          load: resolved_load,
+          load_strict?: load_strict?,
+          select: select,
+          domain: domain,
+          encode?: Keyword.get(run_opts, :encode?, true)
+        }
+
+        try do
+          validate_inputs!(resource, client_input, action, tool_arguments)
+          input = Map.take(client_input, valid_action_inputs(resource, action))
+
+          case action.type do
+            :read ->
+              run_read(resource, action, arguments, input, opts, get_by, exec_ctx)
+
+            :create ->
+              run_create(resource, action, input, opts, exec_ctx)
+
+            :update ->
+              run_update(resource, action, arguments, input, opts, identity, exec_ctx)
+
+            :destroy ->
+              run_destroy(resource, action, arguments, input, opts, identity, exec_ctx)
+
+            :action ->
+              run_generic(resource, action, input, opts, exec_ctx)
+          end
+        rescue
+          error ->
+            error_result(Errors.to_tool_errors(error), errors_format)
+        catch
+          {:tool_error, %ToolError{} = error} ->
+            error_result([error], errors_format)
         end
-
-      exec_ctx = %Context{
-        actor: context[:actor],
-        tenant: context[:tenant],
-        context: context[:context] || %{},
-        load: resolved_load,
-        load_strict?: load_strict?,
-        select: select,
-        domain: domain,
-        encode?: Keyword.get(run_opts, :encode?, true)
-      }
-
-      try do
-        validate_inputs!(resource, client_input, action, tool_arguments)
-        input = Map.take(client_input, valid_action_inputs(resource, action))
-
-        case action.type do
-          :read ->
-            run_read(resource, action, arguments, input, opts, get_by, exec_ctx)
-
-          :create ->
-            run_create(resource, action, input, opts, exec_ctx)
-
-          :update ->
-            run_update(resource, action, arguments, input, opts, identity, exec_ctx)
-
-          :destroy ->
-            run_destroy(resource, action, arguments, input, opts, identity, exec_ctx)
-
-          :action ->
-            run_generic(resource, action, input, opts, exec_ctx)
-        end
-      rescue
-        error ->
-          {:error, Errors.format(error)}
-      catch
-        {:tool_error, error_msg} ->
-          {:error, error_msg}
-      end
     end
+  end
+
+  defp errors_format!(run_opts) do
+    case Keyword.get(run_opts, :errors, :text) do
+      format when format in [:text, :structured] ->
+        format
+
+      other ->
+        raise ArgumentError,
+              "expected the :errors option to be :text or :structured, got: #{inspect(other)}"
+    end
+  end
+
+  defp error_result(errors, :structured), do: {:error, errors}
+  defp error_result(errors, :text), do: {:error, ToolError.to_text(errors)}
+
+  defp tool_error!(code, field, message) do
+    throw({:tool_error, Errors.executor_error(code, field, message)})
   end
 
   defp build_opts(domain, context) do
@@ -196,24 +226,27 @@ defmodule AshAi.Tool.Execution do
 
     cond do
       Keyword.has_key?(cursor, :after) and Keyword.has_key?(cursor, :before) ->
-        throw({:tool_error, "Pass either `after` or `before`, not both."})
+        tool_error!(:invalid, nil, "Pass either `after` or `before`, not both.")
 
       cursor != [] and offset_requested? ->
-        throw(
-          {:tool_error,
-           "Pass either a keyset cursor (`after`/`before`) or an `offset`, not both."}
+        tool_error!(
+          :invalid,
+          nil,
+          "Pass either a keyset cursor (`after`/`before`) or an `offset`, not both."
         )
 
       cursor != [] and not pagination.keyset? ->
-        throw(
-          {:tool_error,
-           "This tool does not support keyset pagination; use `offset` instead of `after`/`before`."}
+        tool_error!(
+          :invalid,
+          cursor |> hd() |> elem(0),
+          "This tool does not support keyset pagination; use `offset` instead of `after`/`before`."
         )
 
       offset_requested? and not pagination.offset? ->
-        throw(
-          {:tool_error,
-           "This tool does not support offset pagination; use `after`/`before` cursors instead of `offset`."}
+        tool_error!(
+          :invalid,
+          :offset,
+          "This tool does not support offset pagination; use `after`/`before` cursors instead of `offset`."
         )
 
       cursor != [] ->
@@ -600,8 +633,11 @@ defmodule AshAi.Tool.Execution do
     |> List.wrap()
     |> Map.new(fn field_name ->
       case Map.get(arguments, to_string(field_name)) do
-        nil -> throw({:tool_error, "Missing required get_by argument: #{field_name}"})
-        value -> {field_name, cast_lookup_value!(resource, field_name, value, "get_by")}
+        nil ->
+          tool_error!(:required, field_name, "Missing required get_by argument: #{field_name}")
+
+        value ->
+          {field_name, cast_lookup_value!(resource, field_name, value, "get_by")}
       end
     end)
   end
@@ -619,9 +655,10 @@ defmodule AshAi.Tool.Execution do
       casted
     else
       _ ->
-        throw(
-          {:tool_error,
-           "Invalid value for #{label} argument #{field_name}: #{truncate(Jason.encode!(value))}"}
+        tool_error!(
+          :invalid,
+          field_name,
+          "Invalid value for #{label} argument #{field_name}: #{truncate(Jason.encode!(value))}"
         )
     end
   end
@@ -641,8 +678,12 @@ defmodule AshAi.Tool.Execution do
 
   defp validate_input_shape(client_input) do
     {:error,
-     "`input` must be a JSON object, got #{truncate(Jason.encode!(client_input))}. " <>
-       "Pass the arguments themselves, not a JSON-encoded string of them."}
+     Errors.executor_error(
+       :invalid,
+       :input,
+       "`input` must be a JSON object, got #{truncate(Jason.encode!(client_input))}. " <>
+         "Pass the arguments themselves, not a JSON-encoded string of them."
+     )}
   end
 
   defp validate_inputs!(resource, client_input, action, tool_arguments) do
@@ -653,13 +694,24 @@ defmodule AshAi.Tool.Execution do
 
     unknown_keys = MapSet.difference(MapSet.new(Map.keys(client_input)), allowed_keys)
 
-    if MapSet.size(unknown_keys) > 0 do
-      error_msg =
-        "Unknown arguments provided: #{Enum.join(unknown_keys, ", ")}. Valid arguments are: #{Enum.join(allowed_keys, ", ")}"
+    case MapSet.to_list(unknown_keys) do
+      [] ->
+        :ok
 
-      throw({:tool_error, error_msg})
-    else
-      :ok
+      keys ->
+        # One error names every unknown key, so `field` is only set when it is
+        # unambiguous.
+        field =
+          case keys do
+            [key] -> key
+            _ -> nil
+          end
+
+        tool_error!(
+          :unknown_input,
+          field,
+          "Unknown arguments provided: #{Enum.join(unknown_keys, ", ")}. Valid arguments are: #{Enum.join(allowed_keys, ", ")}"
+        )
     end
   end
 

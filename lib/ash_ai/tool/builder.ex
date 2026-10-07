@@ -24,6 +24,24 @@ if Code.ensure_loaded?(ReqLLM) do
     - `ReqLLM.Tool` contains the tool schema for the LLM
     - `callback_fn` is a function/2 that takes (arguments, context) and executes the Ash action
 
+    ## Options
+
+      * `:strict` - use strict schema mode for the parameter schema. Defaults to `true`.
+      * `:errors` - how the callback returns failures. `:text` (the default)
+        returns `{:error, error_text}`, which is what `AshAi.ToolLoop` sends
+        back to the LLM. `:structured` returns `{:error, [%AshAi.ToolError{}]}`,
+        for callers that run the callback themselves; `AshAi.ToolEndEvent`
+        then carries the same structured result.
+
+    ## Options
+
+      * `:strict` - use strict schema mode for the parameter schema. Defaults to `true`.
+      * `:errors` - how the callback returns failures. `:text` (the default)
+        returns `{:error, error_text}`, which is what `AshAi.ToolLoop` sends
+        back to the LLM. `:structured` returns `{:error, [%AshAi.ToolError{}]}`,
+        for callers that run the callback themselves; `AshAi.ToolEndEvent`
+        then carries the same structured result.
+
     ## Example
 
         {tool, callback} = AshAi.Tool.Builder.build(tool_def)
@@ -37,7 +55,7 @@ if Code.ensure_loaded?(ReqLLM) do
 
       parameter_schema = Schema.for_tool(tool_def, strict?: strict?)
 
-      callback_fn = build_callback(tool_def)
+      callback_fn = build_callback(tool_def, Keyword.take(opts, [:errors]))
 
       tool =
         ReqLLM.Tool.new!(
@@ -50,7 +68,7 @@ if Code.ensure_loaded?(ReqLLM) do
       {tool, callback_fn}
     end
 
-    defp build_callback(tool_def) do
+    defp build_callback(tool_def, run_opts) do
       fn arguments, context ->
         tool_name = to_string(tool_def.name)
         callbacks = context[:tool_callbacks] || %{}
@@ -66,7 +84,7 @@ if Code.ensure_loaded?(ReqLLM) do
           })
         end
 
-        result = Execution.run(tool_def, arguments, context)
+        result = Execution.run(tool_def, arguments, context, run_opts)
 
         if on_end = callbacks[:on_tool_end] do
           on_end.(%ToolEndEvent{

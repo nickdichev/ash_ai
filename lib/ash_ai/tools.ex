@@ -37,9 +37,12 @@ defmodule AshAi.Tools do
 
   Delegates to `AshAi.Tool.Execution.run/4`.
 
-  Returns `{:ok, result, raw_result}` on success or `{:error, json_error}` on failure.
+  Returns `{:ok, result, raw_result}` on success or `{:error, error_text}` on failure.
   By default, `result` is JSON-encoded text. Set `:encode?` to `false` to return
   the serialized value before JSON encoding.
+
+  Set `errors: :structured` to receive failures as `{:error, [%AshAi.ToolError{}]}`
+  instead of text. See `AshAi.Tool.Execution.run/4` for all options.
   """
   def execute(%Tool{} = tool, arguments, context, opts \\ []) do
     Execution.run(tool, arguments, context, opts)
@@ -66,6 +69,8 @@ defmodule AshAi.Tools do
     Delegates to `AshAi.Tool.Builder.build/2`.
 
     Returns `{ReqLLM.Tool, callback_fn}` tuple.
+
+    Accepts `strict:` and `errors:` options, see `AshAi.Tool.Builder.build/2`.
     """
     def build(%Tool{} = tool, opts \\ []) do
       Builder.build(tool, opts)
